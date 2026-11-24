@@ -1,0 +1,12 @@
+{
+  "name": "befree-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Befree services website with a secure Zoho CRM enquiry endpoint",
+  "type": "module",
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/server.mjs",
+    "test": "node --test server/test/"
+  }
+}
