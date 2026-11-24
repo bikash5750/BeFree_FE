@@ -2,7 +2,9 @@
 
 ## 0. Current mode: Zoho CRM Webform (Leads), `submitMode: "zohoWebform"`
 
-The site now submits through the Zoho CRM webform `WebToLeads1485773000000563162` (India data centre, `crm.zoho.in`). The visible form keeps the custom design. `script.js` copies the values into a hidden copy of the Zoho webform in `index.html` and posts it into a hidden iframe. Zoho redirects that iframe to **`thank-you.html`** only after accepting the submission. That page sends a message back to the main page, and only then does the success modal appear. Any other outcome shows an error and lets the visitor retry. No server or credentials are needed in this mode.
+The site's enquiry form **is** the Zoho CRM webform `WebToLeads1485773000000563162` (India data centre, `crm.zoho.in`), restyled with the site's CSS. It posts directly to Zoho the normal browser way. No hidden frame, no server and no credentials are needed in this mode. On submit, `script.js` validates, fills Zoho's `Last Name`, `Description`, services and `returnURL` fields, and lets the browser POST.
+
+After Zoho accepts the submission it sends the visitor back to the site (`/?enquiry=sent#contact`), and the success message opens. If Zoho shows its own page instead, the visitor stays on Zoho's page: the site can't read Zoho's answer from another domain.
 
 > ⚠️ **This creates Leads, not Contacts and Accounts.** Choosing this webform is an explicit move away from the Accounts/Contacts/Deals model below. Account linking and Contact de-duplication (§5) do **not** happen in this mode. Lead conversion (Lead → Contact + Account) has to be done in CRM, by people or by automation.
 
@@ -22,21 +24,23 @@ The site now submits through the Zoho CRM webform `WebToLeads1485773000000563162
 1. **Services List (`LEADCF1`):** change it to a **Multi-Select Picklist** with all 8 services, spelled exactly as on the site (Audit Support, Paraplanning and Mortgage Services are missing). Then set `servicesMultiple: true` and list all 8 in `servicesOptions` in `index.html`.
 2. **Address – Country / Region:** add Australia, United Kingdom, United States and Other. Then set `countryField: "Address - Country / Region"`.
 3. **First Name:** add it to the webform. Then set `firstNameField: "First Name"`.
-4. **Return URL:** in the webform settings, set it to `https://<your-domain>/thank-you.html`. The site also sends it automatically, but setting it in Zoho is the safer option.
+4. **Return URL:** in the webform settings, set it to `https://<your-domain>/?enquiry=sent#contact`. The site also sends this automatically when served over http(s), but setting it in Zoho is the safer option. **Without it, Zoho may keep the visitor on its own generic "thank you" page.**
 5. **Duplicate handling:** in the webform's duplicate settings, choose to update existing Leads matched by Email, if your edition offers this.
 6. **Mandatory fields:** consider making Email and Phone mandatory in Zoho too (the site already requires them).
 7. **Assignment rule and notification** for webform Leads.
 8. If you change any field in Zoho, **regenerate the webform** and compare the hidden `xnQsjsdp` / `xmIwtLD` values with `index.html`.
 
 ### Tested so far
-A headless browser drove the real page against a **local stand-in for Zoho**:
-- Accepted case (stand-in redirects to `returnURL`): success modal shown, correct fields posted, form reset afterwards.
-- Rejected case (stand-in shows its own page): "We couldn't confirm your enquiry" shown, no success.
+A headless browser drove the real page against a **local stand-in for Zoho** (it acts like Zoho and redirects back to `returnURL`):
+- An invalid form posts nothing and stays on the page with 6 field errors.
+- A valid form navigates to the stand-in with the right fields (`Company`, `Last Name`, `Email`, `Phone`, `Description`, `LEADCF1`, `returnURL`, Zoho's own analytics fields; no stray fields), then returns to the site and shows the success message.
+- No page JavaScript errors.
 
 **Not yet tested against the live Zoho CRM.** Test once with the demo record (§9), then check the Lead in CRM → Leads.
 
 ### Known limits of webform mode
-- If Zoho accepts the record but the redirect to `thank-you.html` fails (rare), the visitor sees an error and may submit again, creating a duplicate. Fix 5 covers this.
+- The success message is shown when someone arrives at `/?enquiry=sent`. That normally only happens via Zoho's redirect, but anyone can type the address, so it is a display message and not proof of a saved record. Check Leads in CRM.
+- If Zoho rejects a submission (for example a picklist value it doesn't accept), the visitor lands on a Zoho page and the site can't show its own error. That is why the picklist fixes above matter.
 - The site must be served over http(s) (`npm start` or any web host), not opened as a local file.
 - To switch back to the Accounts/Contacts server integration below, set `submitMode: "api"`.
 

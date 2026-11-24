@@ -329,7 +329,7 @@
   };
 
   function initEnquiryForm() {
-    const form = $("#enquiryForm");
+    const form = $("[data-enquiry-form]");
     if (!form) return;
 
     const chipsWrap = $("#serviceChips");
@@ -368,14 +368,14 @@
     /* Render service chips (single source of truth: SERVICES) */
     chipsWrap.innerHTML = SERVICES.map((s, i) => `
       <label class="chip">
-        <input type="checkbox" name="services" value="${s.value}" id="svc-${i}">
+        <input type="checkbox" data-service value="${s.value}" id="svc-${i}">
         <span class="chip__body">
           <span class="chip__icon"><svg class="icon"><use href="#${s.icon}"/></svg></span>
           <span class="chip__label">${s.value}</span>
           <span class="chip__check"><svg class="icon"><use href="#i-check"/></svg></span>
         </span>
       </label>`).join("");
-    const serviceBoxes = $$('input[name="services"]', chipsWrap);
+    const serviceBoxes = $$("input[data-service]", chipsWrap);
 
     const getSelectedServices = () => serviceBoxes.filter((b) => b.checked).map((b) => b.value);
 
@@ -450,16 +450,19 @@
       if (touched.has("services") || fieldWrap.services.classList.contains("is-invalid")) validateField("services");
     });
 
-    /* Submit */
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (isSubmitting) return;
+    /* Submit.
+       Zoho mode: validate, fill Zoho's fields, then let the browser POST the form
+       to Zoho natively (no preventDefault). Zoho redirects back to this page.
+       API mode: send JSON to our own endpoint and wait for confirmation. */
+    form.addEventListener("submit", (e) => {
+      if (isSubmitting) { e.preventDefault(); return; }
       hideStatus();
 
       const values = readValues();
       Object.keys(Validators).forEach((k) => touched.add(k));
       const { valid, firstInvalid } = validateAll(values);
       if (!valid) {
+        e.preventDefault();
         const target = firstInvalid === "services" ? serviceBoxes[0] : inputs[firstInvalid];
         target.focus({ preventScroll: true });
         target.closest(".field").scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "center" });
@@ -467,32 +470,34 @@
       }
 
       // Bots tend to fill hidden fields. Stop quietly; never pretend it succeeded.
-      if (values.website) return;
+      if (values.website) { e.preventDefault(); return; }
 
-      const useWebform = CONFIG.submitMode === "zohoWebform";
-      const configured = useWebform
-        ? Boolean(CONFIG.zohoWebform && document.getElementById(CONFIG.zohoWebform.formId))
-        : Boolean(CONFIG.enquiryEndpoint);
-      if (!configured) {
-        showStatus("Enquiries are temporarily unavailable.", "The enquiry service hasn't been configured yet. Please try again later.");
+      if (CONFIG.submitMode === "api") {
+        e.preventDefault();
+        if (!CONFIG.enquiryEndpoint) {
+          showStatus("Enquiries are temporarily unavailable.", "The enquiry service hasn't been configured yet. Please try again later.");
+          return;
+        }
+        setLoading(true);
+        submitEnquiry(values).then((result) => {
+          if (result.ok) {
+            openSuccessModal(values, result.reference);
+          } else {
+            if (result.fieldErrors) {
+              Object.entries(result.fieldErrors).forEach(([k, msg]) => { if (errorEl[k]) showFieldError(k, msg); });
+            }
+            showStatus(result.title, result.message);
+          }
+        }).finally(() => setLoading(false));
         return;
       }
 
-      setLoading(true);
-      try {
-        const result = useWebform ? await submitViaZohoWebform(values) : await submitEnquiry(values);
-        if (result.ok) {
-          openSuccessModal(values, result.reference);
-        } else {
-          if (result.fieldErrors) {
-            Object.entries(result.fieldErrors).forEach(([k, msg]) => { if (errorEl[k]) showFieldError(k, msg); });
-          }
-          showStatus(result.title, result.message);
-        }
-      } finally {
-        setLoading(false);
-      }
+      prepareZohoFields(form, values);
+      setLoading(true); // the page navigates to Zoho and back; no in-page result to wait for
     });
+
+    // Coming back via the browser's Back button must not leave the button stuck on "Sending…".
+    window.addEventListener("pageshow", (e) => { if (e.persisted) setLoading(false); });
 
     /* Reset everything after the success modal is acknowledged */
     const resetForm = () => {
@@ -508,6 +513,60 @@
     };
 
     initModal(resetForm);
+
+    // Zoho sends the visitor back here (Return URL) only after it has accepted the submission.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("enquiry") === "sent") {
+      history.replaceState(null, "", `${window.location.pathname}#contact`);
+      openSuccessModal(null, "");
+    }
+  }
+
+  /**
+   * Fill the Zoho webform fields that the designed form doesn't hold directly.
+   * Only values Zoho's picklists accept are sent as picklist values; everything
+   * is also written to Description so nothing is lost.
+   */
+  function prepareZohoFields(form, values) {
+    const cfg = CONFIG.zohoWebform || {};
+    $$("[data-dynamic]", form).forEach((el) => el.remove());
+    const setField = (name, value) => { form.elements.namedItem(name).value = value; };
+    const addField = (name, value) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      input.dataset.dynamic = "true";
+      form.appendChild(input);
+    };
+
+    const nameParts = values.fullName.split(" ");
+    if (cfg.firstNameField && nameParts.length > 1) {
+      addField(cfg.firstNameField, nameParts.slice(0, -1).join(" "));
+      setField("Last Name", nameParts[nameParts.length - 1]);
+    } else {
+      setField("Last Name", values.fullName); // no First Name field on the webform yet
+    }
+
+    const accepted = values.services.filter((s) => (cfg.servicesOptions || []).includes(s));
+    (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
+    if (cfg.countryField) addField(cfg.countryField, values.country);
+
+    setField("Description", [
+      "Website enquiry",
+      `Full name: ${values.fullName}`,
+      `Country: ${values.country}`,
+      `Services requested (${values.services.length}): ${values.services.join(", ")}`,
+      `Marketing consent: ${values.marketingConsent ? "Yes" : "No"}`,
+    ].join("\n"));
+
+    // Ask Zoho to return the visitor to this page (needs http/https; also set it in Zoho's webform settings).
+    if (/^https?:$/.test(window.location.protocol)) {
+      const back = new URL(window.location.href);
+      back.search = "?enquiry=sent";
+      back.hash = "#contact";
+      setField("returnURL", back.href);
+    }
   }
 
   /**
@@ -555,100 +614,6 @@
     }
   }
 
-  /**
-   * Submit through the Zoho CRM webform embedded (hidden) in index.html.
-   *
-   * The browser can't read Zoho's cross-origin response, so confirmation works
-   * like this: returnURL points at our own thank-you.html. Zoho redirects the
-   * hidden iframe there only after accepting the submission, and that page
-   * posts a same-origin message back. No message means no success.
-   */
-  function submitViaZohoWebform(values) {
-    const cfg = CONFIG.zohoWebform;
-    const zform = document.getElementById(cfg.formId);
-    const iframe = document.getElementById(zform.target);
-    const retryHint = "Your details are still in the form, so you can try again.";
-
-    // --- Map values onto Zoho's field names ---
-    const setField = (name, value) => { zform.elements.namedItem(name).value = value; };
-    const addField = (name, value) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      input.dataset.dynamic = "true";
-      zform.appendChild(input);
-    };
-    $$('[data-dynamic="true"]', zform).forEach((el) => el.remove());
-
-    const nameParts = values.fullName.split(" ");
-    if (cfg.firstNameField && nameParts.length > 1) {
-      addField(cfg.firstNameField, nameParts.slice(0, -1).join(" "));
-      setField("Last Name", nameParts[nameParts.length - 1]);
-    } else {
-      setField("Last Name", values.fullName); // no First Name field on the webform yet
-    }
-    setField("Company", values.company);
-    setField("Email", values.email);
-    setField("Phone", values.phone);
-
-    // Only send picklist values Zoho knows about, so it can't reject the record.
-    const accepted = values.services.filter((s) => cfg.servicesOptions.includes(s));
-    (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
-    if (cfg.countryField) addField(cfg.countryField, values.country);
-
-    // Everything is also written to Description, so nothing is lost while the
-    // Zoho fields are being brought in line with the website.
-    setField("Description", [
-      "Website enquiry",
-      `Full name: ${values.fullName}`,
-      `Country: ${values.country}`,
-      `Services requested (${values.services.length}): ${values.services.join(", ")}`,
-      `Marketing consent: ${values.marketingConsent ? "Yes" : "No"}`,
-    ].join("\n"));
-
-    setField("returnURL", new URL("thank-you.html", window.location.href).href);
-
-    // --- Submit and wait for confirmation ---
-    return new Promise((resolve) => {
-      let settled = false;
-      let loadTimer = 0;
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeoutTimer);
-        clearTimeout(loadTimer);
-        window.removeEventListener("message", onMessage);
-        iframe.removeEventListener("load", onLoad);
-        resolve(result);
-      };
-      const onMessage = (e) => {
-        if (e.origin === window.location.origin && e.source === iframe.contentWindow && e.data?.type === "befree:zoho-success") {
-          finish({ ok: true });
-        }
-      };
-      // The iframe loaded something but no confirmation followed: Zoho showed
-      // its own page (e.g. a validation error) instead of redirecting to us.
-      const onLoad = () => {
-        clearTimeout(loadTimer);
-        loadTimer = setTimeout(() => finish({
-          ok: false,
-          title: "We couldn't confirm your enquiry.",
-          message: `Our CRM didn't confirm the submission. Please wait a moment and try again. ${retryHint}`,
-        }), 2500);
-      };
-      const timeoutTimer = setTimeout(() => finish({
-        ok: false,
-        title: "The request took too long.",
-        message: `We didn't get a confirmation in time. Please check your connection. ${retryHint}`,
-      }), REQUEST_TIMEOUT_MS);
-
-      window.addEventListener("message", onMessage);
-      iframe.addEventListener("load", onLoad);
-      zform.submit();
-    });
-  }
-
   /* ------------------------------------------------------------------------
      Success modal (focus-trapped, Escape to close)
      ------------------------------------------------------------------------ */
@@ -674,7 +639,12 @@
       prefersReducedMotion ? finish() : setTimeout(finish, 250);
     };
 
+    // `values` is null when Zoho sent the visitor back after the redirect (no details to summarise).
     openSuccessModal = (values, reference) => {
+      const hasValues = Boolean(values);
+      values = values || { fullName: "", email: "", phone: "", company: "", country: "", services: [] };
+      $("#summaryList").hidden = !hasValues;
+      $("#summaryNameWrap").hidden = !hasValues;
       $("#summaryFirstName").textContent = values.fullName.split(" ")[0];
       $("#summaryName").textContent = values.fullName;
       $("#summaryEmail").textContent = values.email;

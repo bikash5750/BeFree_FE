@@ -22,7 +22,6 @@ const STATIC_FILES = {
   "/index.html": ["index.html", "text/html; charset=utf-8"],
   "/style.css": ["style.css", "text/css; charset=utf-8"],
   "/script.js": ["script.js", "text/javascript; charset=utf-8"],
-  "/thank-you.html": ["thank-you.html", "text/html; charset=utf-8"],
 };
 
 const cfg = loadConfig();
