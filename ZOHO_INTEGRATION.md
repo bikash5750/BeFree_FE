@@ -16,12 +16,13 @@ After Zoho accepts the submission it sends the visitor back to the site (`/?enqu
 | Full name | `Last Name` (whole name) | No First Name on the webform yet; see fix 3 |
 | Email | `Email` | |
 | Phone | `Phone` | |
-| Services (multi) | `LEADCF1` "Services List" | Currently **single-select with 5 values**, so only the first selected service that Zoho recognises is sent |
+| Services (multi) | none (field removed from the webform) | Written to `Description` only. To store them in a CRM field, add a multi-select picklist to the webform, then set `servicesField`, `servicesMultiple: true` and `servicesOptions` in `index.html` |
 | Country | not sent | The picklist has no options yet |
 | All of the above + consent | `Description` | Full record kept here, so nothing is lost |
 
 ### Changes needed in Zoho before go-live
-1. **Services List (`LEADCF1`):** change it to a **Multi-Select Picklist** with all 8 services, spelled exactly as on the site (Audit Support, Paraplanning and Mortgage Services are missing). Then set `servicesMultiple: true` and list all 8 in `servicesOptions` in `index.html`.
+1. **Services:** add a **Multi-Select Picklist** with all 8 services, spelled exactly as on the site, to the Lead module and to the webform. Then set `servicesField`, `servicesMultiple: true` and list all 8 in `servicesOptions` in `index.html`.
+0. **Every time you regenerate the webform in Zoho, its hidden identifiers change** (`xnQsjsdp`, `xmIwtLD`, and the analytics `rid`/`tw`). Paste the new form into the site, or submissions may be silently ignored.
 2. **Address – Country / Region:** add Australia, United Kingdom, United States and Other. Then set `countryField: "Address - Country / Region"`.
 3. **First Name:** add it to the webform. Then set `firstNameField: "First Name"`.
 4. **Return URL:** in the webform settings, set it to `https://<your-domain>/?enquiry=sent#contact`. The site also sends this automatically when served over http(s), but setting it in Zoho is the safer option. **Without it, Zoho may keep the visitor on its own generic "thank you" page.**
@@ -33,7 +34,7 @@ After Zoho accepts the submission it sends the visitor back to the site (`/?enqu
 ### Tested so far
 A headless browser drove the real page against a **local stand-in for Zoho** (it acts like Zoho and redirects back to `returnURL`):
 - An invalid form posts nothing and stays on the page with 6 field errors.
-- A valid form navigates to the stand-in with the right fields (`Company`, `Last Name`, `Email`, `Phone`, `Description`, `LEADCF1`, `returnURL`, Zoho's own analytics fields; no stray fields), then returns to the site and shows the success message.
+- A valid form navigates to the stand-in with the right fields (`Company`, `Last Name`, `Email`, `Phone`, `Description`, `returnURL`, Zoho's own analytics fields; no stray fields), then returns to the site and shows the success message.
 - No page JavaScript errors.
 
 **Not yet tested against the live Zoho CRM.** Test once with the demo record (§9), then check the Lead in CRM → Leads.

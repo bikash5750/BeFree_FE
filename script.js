@@ -548,8 +548,10 @@
       setField("Last Name", values.fullName); // no First Name field on the webform yet
     }
 
-    const accepted = values.services.filter((s) => (cfg.servicesOptions || []).includes(s));
-    (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
+    if (cfg.servicesField) {
+      const accepted = values.services.filter((s) => (cfg.servicesOptions || []).includes(s));
+      (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
+    }
     if (cfg.countryField) addField(cfg.countryField, values.country);
 
     setField("Description", [
