@@ -293,10 +293,15 @@
      Enquiry form
      ------------------------------------------------------------------------ */
   const Validators = {
-    fullName(v) {
-      if (!v) return "Please enter your full name.";
-      if (v.length < 2) return "Your name looks a little short.";
-      if (v.length > 80) return "Please keep your name under 80 characters.";
+    firstName(v) {
+      if (!v) return "Please enter your first name.";
+      if (v.length > 40) return "Please keep your first name under 40 characters.";
+      if (!/^[\p{L}][\p{L}\p{M}' .-]*$/u.test(v)) return "Please use letters, spaces, hyphens or apostrophes only.";
+      return "";
+    },
+    lastName(v) {
+      if (!v) return "Please enter your last name.";
+      if (v.length > 80) return "Please keep your last name under 80 characters.";
       if (!/^[\p{L}][\p{L}\p{M}' .-]*$/u.test(v)) return "Please use letters, spaces, hyphens or apostrophes only.";
       return "";
     },
@@ -340,14 +345,16 @@
     const statusText = $("#formStatusText");
 
     const inputs = {
-      fullName: $("#fullName"),
+      firstName: $("#firstName"),
+      lastName: $("#lastName"),
       email: $("#email"),
       phone: $("#phone"),
       company: $("#company"),
       country: $("#country"),
     };
     const fieldWrap = {
-      fullName: inputs.fullName.closest(".field"),
+      firstName: inputs.firstName.closest(".field"),
+      lastName: inputs.lastName.closest(".field"),
       email: inputs.email.closest(".field"),
       phone: inputs.phone.closest(".field"),
       company: inputs.company.closest(".field"),
@@ -355,7 +362,8 @@
       services: $(".services-pick", form),
     };
     const errorEl = {
-      fullName: $("#fullNameError"),
+      firstName: $("#firstNameError"),
+      lastName: $("#lastNameError"),
       email: $("#emailError"),
       phone: $("#phoneError"),
       company: $("#companyError"),
@@ -388,8 +396,11 @@
       pickCount.classList.add("bump");
     };
 
+    const clean = (v) => v.trim().replace(/\s+/g, " ");
     const readValues = () => ({
-      fullName: inputs.fullName.value.trim().replace(/\s+/g, " "),
+      firstName: clean(inputs.firstName.value),
+      lastName: clean(inputs.lastName.value),
+      fullName: clean(`${inputs.firstName.value} ${inputs.lastName.value}`),
       email: inputs.email.value.trim().toLowerCase(),
       phone: inputs.phone.value.trim(),
       company: inputs.company.value.trim().replace(/\s+/g, " "),
@@ -540,14 +551,6 @@
       form.appendChild(input);
     };
 
-    const nameParts = values.fullName.split(" ");
-    if (cfg.firstNameField && nameParts.length > 1) {
-      addField(cfg.firstNameField, nameParts.slice(0, -1).join(" "));
-      setField("Last Name", nameParts[nameParts.length - 1]);
-    } else {
-      setField("Last Name", values.fullName); // no First Name field on the webform yet
-    }
-
     if (cfg.servicesField) {
       const accepted = values.services.filter((s) => (cfg.servicesOptions || []).includes(s));
       (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
@@ -649,7 +652,7 @@
       values = values || { fullName: "", email: "", phone: "", company: "", country: "", services: [] };
       $("#summaryList").hidden = !hasValues;
       $("#summaryNameWrap").hidden = !hasValues;
-      $("#summaryFirstName").textContent = values.fullName.split(" ")[0];
+      $("#summaryFirstName").textContent = values.firstName || "";
       $("#summaryName").textContent = values.fullName;
       $("#summaryEmail").textContent = values.email;
       $("#summaryPhone").textContent = values.phone;
