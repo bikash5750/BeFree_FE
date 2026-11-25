@@ -484,7 +484,7 @@ em { font-family: var(--font-serif); font-style: italic; font-weight: 400; lette
 .form__row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); }
 .req { color: var(--danger); }
 
-.field { display: grid; gap: .45rem; min-width: 0; border: 0; padding: 0; margin: 0; }
+.field { display: grid; align-content: start; gap: .45rem; min-width: 0; border: 0; padding: 0; margin: 0; }
 .field label, .field legend { font-size: var(--fs-sm); font-weight: 700; color: var(--ink-900); }
 .field__control { position: relative; }
 .field__control::after {
