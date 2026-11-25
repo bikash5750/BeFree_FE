@@ -552,7 +552,9 @@
       const accepted = values.services.filter((s) => (cfg.servicesOptions || []).includes(s));
       (cfg.servicesMultiple ? accepted : accepted.slice(0, 1)).forEach((s) => addField(cfg.servicesField, s));
     }
-    if (cfg.countryField) addField(cfg.countryField, values.country);
+    if (cfg.countryField && (cfg.countryOptions || []).includes(values.country)) {
+      addField(cfg.countryField, values.country);
+    }
 
     setField("Description", [
       "Website enquiry",
